@@ -28,6 +28,7 @@ import scriptHandler
 import textInfos
 import speech
 import queueHandler
+import config
 
 # Import our modules
 from . import config_handler as ch
@@ -58,8 +59,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		
 		global _nvdaSpeak, _translator, _async_translator, _cache
 		
-		# Load configuration
-		ch.loadConfig()
+		# Initialize configuration
+		ch.initConfig()
 		
 		# Initialize cache
 		_cache = TranslationCache()
@@ -84,12 +85,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		"""Initialize or reinitialize the translator with current settings."""
 		global _translator, _async_translator
 		
-		config = ch.config["polyglotLLM"]
-		api_key = config["api_key"]
-		target_language = config["target_language"]
-		system_prompt = config["system_prompt"]
-		thinking_budget = config["thinking_budget"]
-		max_tokens = config["max_tokens"]
+		cfg = ch.getConfig()
+		api_key = cfg["api_key"]
+		target_language = cfg["target_language"]
+		system_prompt = cfg["system_prompt"]
+		thinking_budget = cfg["thinking_budget"]
+		max_tokens = cfg["max_tokens"]
 		
 		_translator = GeminiTranslator(
 			api_key=api_key,
@@ -123,8 +124,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		"""
 		global _translator, _cache, _lastTranslatedText
 		
-		config = ch.config["polyglotLLM"]
-		real_time_enabled = config["real_time_enabled"]
+		cfg = ch.getConfig()
+		real_time_enabled = cfg["real_time_enabled"]
 		
 		# If real-time translation is disabled, use original speak
 		if not real_time_enabled or not _translator:
@@ -146,14 +147,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			app_name = "__global__"
 		
 		# Check cache first
-		conversation_mode = config["conversation_mode"]
+		conversation_mode = cfg["conversation_mode"]
 		conversation_history = _translator.conversation_history if conversation_mode else None
 		
 		cached_translation = None
-		if config["cache_translations"]:
+		if cfg["cache_translations"]:
 			cached_translation = _cache.get(
 				text_to_translate,
-				config["target_language"],
+				cfg["target_language"],
 				app_name,
 				conversation_mode,
 				conversation_history
@@ -175,11 +176,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			_lastTranslatedText = translated_text
 			
 			# Cache the translation
-			if config["cache_translations"]:
+			if cfg["cache_translations"]:
 				_cache.set(
 					text_to_translate,
 					translated_text,
-					config["target_language"],
+					cfg["target_language"],
 					app_name,
 					conversation_mode,
 					conversation_history
@@ -215,7 +216,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			ui.message(_("No text to translate"))
 			return
 		
-		config = ch.config["polyglotLLM"]
+		cfg = ch.getConfig()
 		
 		# Get app name for cache
 		try:
@@ -224,14 +225,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			app_name = "__global__"
 		
 		# Check cache
-		conversation_mode = config["conversation_mode"]
+		conversation_mode = cfg["conversation_mode"]
 		conversation_history = _translator.conversation_history if conversation_mode else None
 		
 		cached_translation = None
-		if config["cache_translations"]:
+		if cfg["cache_translations"]:
 			cached_translation = _cache.get(
 				text,
-				config["target_language"],
+				cfg["target_language"],
 				app_name,
 				conversation_mode,
 				conversation_history
@@ -240,7 +241,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if cached_translation:
 			self.lastTranslation = cached_translation
 			ui.message(cached_translation)
-			if config["copy_translations"]:
+			if cfg["copy_translations"]:
 				api.copyToClip(cached_translation)
 			return
 		
@@ -249,11 +250,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self.lastTranslation = translated_text
 			
 			# Cache the translation
-			if config["cache_translations"]:
+			if cfg["cache_translations"]:
 				_cache.set(
 					text,
 					translated_text,
-					config["target_language"],
+					cfg["target_language"],
 					app_name,
 					conversation_mode,
 					conversation_history
@@ -261,7 +262,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			
 			# Announce and optionally copy
 			queueHandler.queueFunction(queueHandler.eventQueue, ui.message, translated_text)
-			if config["copy_translations"]:
+			if cfg["copy_translations"]:
 				queueHandler.queueFunction(queueHandler.eventQueue, api.copyToClip, translated_text)
 		
 		def on_error(error_msg):
@@ -277,11 +278,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	)
 	def script_toggleRealTimeTranslation(self, gesture):
 		"""Toggle real-time translation on/off."""
-		config = ch.config["polyglotLLM"]
-		config["real_time_enabled"] = not config["real_time_enabled"]
+		cfg = ch.getConfig()
+		cfg["real_time_enabled"] = not cfg["real_time_enabled"]
 		ch.saveConfig()
 		
-		if config["real_time_enabled"]:
+		if cfg["real_time_enabled"]:
 			ui.message(_("Real-time translation enabled"))
 		else:
 			ui.message(_("Real-time translation disabled"))
@@ -363,8 +364,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	)
 	def script_announceLanguages(self, gesture):
 		"""Announce current language configuration."""
-		config = ch.config["polyglotLLM"]
-		target_lang = languages.getLanguageName(config["target_language"])
+		cfg = ch.getConfig()
+		target_lang = languages.getLanguageName(cfg["target_language"])
 		ui.message(_("Translating to {language}").format(language=target_lang))
 		# Clear layer
 		self.clearGestureBindings()
@@ -375,11 +376,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	)
 	def script_toggleConversationMode(self, gesture):
 		"""Toggle conversation mode."""
-		config = ch.config["polyglotLLM"]
-		config["conversation_mode"] = not config["conversation_mode"]
+		cfg = ch.getConfig()
+		cfg["conversation_mode"] = not cfg["conversation_mode"]
 		ch.saveConfig()
 		
-		if config["conversation_mode"]:
+		if cfg["conversation_mode"]:
 			ui.message(_("Conversation mode enabled"))
 		else:
 			# Clear conversation history

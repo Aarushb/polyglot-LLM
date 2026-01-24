@@ -79,29 +79,29 @@ class PolyglotLLMSettingsPanel(SettingsPanel):
 	
 	def populateValues(self):
 		"""Populate controls with current settings."""
-		config = ch.config["polyglotLLM"]
+		cfg = ch.getConfig()
 		
 		# API Key
-		self.api_key_text.SetValue(config["api_key"])
+		self.api_key_text.SetValue(cfg["api_key"])
 		
 		# Target Language
-		target_lang = config["target_language"]
+		target_lang = cfg["target_language"]
 		if target_lang in self.language_codes:
 			self.target_language.SetSelection(self.language_codes.index(target_lang))
 		else:
 			self.target_language.SetSelection(0)
 		
 		# System Prompt
-		self.system_prompt.SetValue(config["system_prompt"])
+		self.system_prompt.SetValue(cfg["system_prompt"])
 		
 		# Conversation Mode
-		self.conversation_mode.SetValue(config["conversation_mode"])
+		self.conversation_mode.SetValue(cfg["conversation_mode"])
 		
 		# History Length
-		self.history_length.SetValue(config["conversation_history_length"])
+		self.history_length.SetValue(cfg["conversation_history_length"])
 		
 		# Thinking Budget
-		thinking_budget = config["thinking_budget"]
+		thinking_budget = cfg["thinking_budget"]
 		thinking_choices = ["minimal", "low", "medium", "high"]
 		if thinking_budget in thinking_choices:
 			self.thinking_budget.SetSelection(thinking_choices.index(thinking_budget))
@@ -109,49 +109,49 @@ class PolyglotLLMSettingsPanel(SettingsPanel):
 			self.thinking_budget.SetSelection(1)  # Default to "low"
 		
 		# Max Tokens
-		self.max_tokens.SetValue(config["max_tokens"])
+		self.max_tokens.SetValue(cfg["max_tokens"])
 		
 		# Cache Translations
-		self.cache_translations.SetValue(config["cache_translations"])
+		self.cache_translations.SetValue(cfg["cache_translations"])
 		
 		# Copy Translations
-		self.copy_translations.SetValue(config["copy_translations"])
+		self.copy_translations.SetValue(cfg["copy_translations"])
 	
 	def onSave(self):
 		"""Save settings when user clicks OK."""
-		config = ch.config["polyglotLLM"]
+		cfg = ch.getConfig()
 		
 		# API Key
-		config["api_key"] = self.api_key_text.GetValue()
+		cfg["api_key"] = self.api_key_text.GetValue()
 		
 		# Target Language
 		selection = self.target_language.GetSelection()
 		if selection != wx.NOT_FOUND:
-			config["target_language"] = self.language_codes[selection]
+			cfg["target_language"] = self.language_codes[selection]
 		
 		# System Prompt
-		config["system_prompt"] = self.system_prompt.GetValue()
+		cfg["system_prompt"] = self.system_prompt.GetValue()
 		
 		# Conversation Mode
-		config["conversation_mode"] = self.conversation_mode.GetValue()
+		cfg["conversation_mode"] = self.conversation_mode.GetValue()
 		
 		# History Length
-		config["conversation_history_length"] = self.history_length.GetValue()
+		cfg["conversation_history_length"] = self.history_length.GetValue()
 		
 		# Thinking Budget
 		thinking_choices = ["minimal", "low", "medium", "high"]
 		selection = self.thinking_budget.GetSelection()
 		if selection != wx.NOT_FOUND:
-			config["thinking_budget"] = thinking_choices[selection]
+			cfg["thinking_budget"] = thinking_choices[selection]
 		
 		# Max Tokens
-		config["max_tokens"] = self.max_tokens.GetValue()
+		cfg["max_tokens"] = self.max_tokens.GetValue()
 		
 		# Cache Translations
-		config["cache_translations"] = self.cache_translations.GetValue()
+		cfg["cache_translations"] = self.cache_translations.GetValue()
 		
 		# Copy Translations
-		config["copy_translations"] = self.copy_translations.GetValue()
+		cfg["copy_translations"] = self.copy_translations.GetValue()
 		
 		# Save to disk
 		ch.saveConfig()

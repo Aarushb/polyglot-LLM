@@ -3,56 +3,40 @@
 # This add-on is free software, licensed under the terms of the GNU General Public License (version 2).
 
 
-import os
 import logHandler
-from configobj import ConfigObj, ConfigObjError, flatten_errors
-from configobj.validate import Validator
-from .configspec import configspec
-import globalVars
+import config
 
 
 log = logHandler.log
-config = None
+
+# Configuration specification for NVDA's config system
+confspec = {
+	"api_key": "string(default='')",
+	"target_language": "string(default='en')",
+	"system_prompt": "string(default='You are a professional translator. Automatically detect the source language of the input text and translate it to {target_language}. Respond ONLY with the translated text. Do not include the source language name, explanations, notes, or any other content.')",
+	"conversation_mode": "boolean(default=False)",
+	"conversation_history_length": "integer(default=10, min=5, max=20)",
+	"thinking_budget": "string(default='low')",
+	"max_tokens": "integer(default=2048, min=256, max=8192)",
+	"cache_translations": "boolean(default=True)",
+	"real_time_enabled": "boolean(default=False)",
+	"copy_translations": "boolean(default=True)",
+}
 
 
-def loadConfig():
-	"""Loads the add-on's configuration."""
-	global config
-	path = os.path.abspath(os.path.join(globalVars.appArgs.configPath, "polyglotLLM.conf"))
-	# Seek back to the beginning of the spec for every read, in case this is called twice
-	configspec.seek(0)
-	try:
-		config = ConfigObj(
-			infile=path, configspec=configspec, encoding="UTF8", create_empty=True
-		)
-	except ConfigObjError as exc:
-		log.exception("While loading the configuration file")
-		return
-	validator = Validator()
-	result = config.validate(validator, copy=True)
-	if result != True:
-		errors = reportValidationErrors(config, result)
-		errors = "\n".join(errors)
-		e = "error" + ("" if len(errors) == 1 else "s")
-		log.error(e + " were encountered while validating the configuration.\n" + errors)
+def initConfig():
+	"""Initialize configuration in NVDA's config system."""
+	config.conf.spec["polyglotLLM"] = confspec
 
 
-def reportValidationErrors(config, validation_result):
-	"""Return any errors that were detected with the configuration file to display a friendly message."""
-	errors = []
-	for (section_list, key, _) in flatten_errors(config, validation_result):
-		if key:
-			errors.append(
-				'"%s" key in section "%s" failed validation'
-				% (key, ", ".join(section_list))
-			)
-		else:
-			errors.append('missing required section "%s"' % (", ".join(section_list)))
-	return errors
+def getConfig():
+	"""Get the configuration dictionary."""
+	return config.conf["polyglotLLM"]
 
 
 def saveConfig():
-	"""Saves the configuration to disk."""
-	global config
-	if config is not None:
-		config.write()
+	"""Save configuration to disk."""
+	try:
+		config.conf.save()
+	except Exception as e:
+		log.error(f"Failed to save configuration: {str(e)}")

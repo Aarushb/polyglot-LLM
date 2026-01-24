@@ -1,172 +1,310 @@
-# Gemini API integration for Polyglot-LLM NVDA add-on
+# Gemini API translator for Polyglot-LLM NVDA add-on
 # Copyright (C) 2025, Polyglot-LLM Contributors
 # This add-on is free software, licensed under the terms of the GNU General Public License (version 2).
 
 
-import json
 import threading
 import logHandler
-try:
-	from urllib import request, error
-except ImportError:
-	import urllib2 as request
-	import urllib2 as error
+from typing import Optional, Callable, List, Dict
 
 
 log = logHandler.log
 
 
+# Check if google-genai is available, fallback to REST if not
+try:
+	from google import genai
+	from google.genai import types
+	HAS_GOOGLE_GENAI = True
+except ImportError:
+	HAS_GOOGLE_GENAI = False
+	log.warning("google-genai not available, will use REST API")
+	import json
+	import urllib.request
+	import urllib.error
+
+
 class GeminiTranslator:
-	"""Handles translation via Google Gemini API."""
+	"""
+	Translator using Google Gemini API.
+	Supports both google-genai SDK and REST fallback.
+	Designed to be easily modifiable for different models.
+	"""
 	
-	BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+	# Model configuration - easily changeable
+	DEFAULT_MODEL = "gemini-3-flash-preview"
+	TEMPERATURE = 1.0  # Keep at 1.0 for Gemini 3 as recommended
 	
-	def __init__(self, api_key, target_language, system_prompt, thinking_budget="low", max_tokens=2048):
+	# Thinking level mapping for Gemini 3
+	THINKING_LEVELS = {
+		"minimal": "minimal",
+		"low": "low",
+		"medium": "medium",
+		"high": "high"
+	}
+	
+	def __init__(self, api_key: str, target_language: str, system_prompt: str, 
+	             thinking_budget: str = "low", max_tokens: int = 2048, 
+	             model: str = None):
+		"""
+		Initialize the Gemini translator.
+		
+		Args:
+			api_key: Google Gemini API key
+			target_language: Target language name (e.g., "Spanish", "French")
+			system_prompt: System instruction for the model
+			thinking_budget: Thinking level/budget ("minimal", "low", "medium", "high")
+			max_tokens: Maximum output tokens
+			model: Model name (defaults to gemini-3-flash-preview)
+		"""
 		self.api_key = api_key
 		self.target_language = target_language
 		self.system_prompt = system_prompt
 		self.thinking_budget = thinking_budget
 		self.max_tokens = max_tokens
-		self.conversation_history = []
+		self.model = model or self.DEFAULT_MODEL
+		
+		# Conversation history for context-aware translation
+		self.conversation_history: List[Dict[str, str]] = []
+		
+		# Initialize client if SDK available
+		if HAS_GOOGLE_GENAI:
+			try:
+				self.client = genai.Client(api_key=api_key)
+				log.info(f"Gemini translator initialized with {self.model}")
+			except Exception as e:
+				log.error(f"Failed to initialize Gemini client: {str(e)}")
+				self.client = None
+		else:
+			self.client = None
+			log.info("Using REST API for Gemini")
 	
-	def translate(self, text, use_conversation_history=False):
+	def translate(self, text: str, use_conversation_mode: bool = False) -> Optional[str]:
 		"""
-		Translate text using Gemini API.
-		Returns translated text or None on error.
+		Translate text synchronously.
+		
+		Args:
+			text: Text to translate
+			use_conversation_mode: Whether to include conversation history
+		
+		Returns:
+			Translated text or None if translation fails
 		"""
-		if not self.api_key:
-			log.error("Gemini API key not configured")
+		if not text or not text.strip():
 			return None
 		
-		if not text or not text.strip():
-			return text
+		if not self.api_key:
+			log.error("No API key configured")
+			return None
 		
-		# Build prompt with conversation history if enabled
-		prompt = self._buildPrompt(text, use_conversation_history)
-		
-		# Prepare API request
-		url = f"{self.BASE_URL}?key={self.api_key}"
-		headers = {
-			"Content-Type": "application/json"
-		}
-		
-		# Build request body
-		body = {
-			"contents": [{
-				"parts": [{
-					"text": prompt
-				}]
-			}],
-			"generationConfig": {
-				"temperature": 0.3,
-				"maxOutputTokens": self.max_tokens,
-			}
-		}
-		
-		# Add thinking budget if supported (research exact parameter name)
-		# Note: This may need adjustment based on Gemini API documentation
-		if self.thinking_budget:
-			body["generationConfig"]["thinkingBudget"] = self.thinking_budget
+		# Build the prompt with system instruction and conversation context
+		prompt = self._buildPrompt(text, use_conversation_mode)
 		
 		try:
-			req = request.Request(
-				url,
-				data=json.dumps(body).encode('utf-8'),
-				headers=headers
+			if HAS_GOOGLE_GENAI and self.client:
+				translated = self._translateWithSDK(prompt)
+			else:
+				translated = self._translateWithREST(prompt)
+			
+			# Update conversation history if in conversation mode
+			if use_conversation_mode and translated:
+				self._addToHistory(text, translated)
+			
+			return translated
+		
+		except Exception as e:
+			log.error(f"Translation failed: {str(e)}", exc_info=True)
+			return None
+	
+	def _buildPrompt(self, text: str, use_conversation_mode: bool) -> str:
+		"""Build the complete prompt with system instruction and history."""
+		# Format system prompt with target language
+		formatted_prompt = self.system_prompt.format(target_language=self.target_language)
+		
+		prompt_parts = [formatted_prompt]
+		
+		# Add conversation history if enabled
+		if use_conversation_mode and self.conversation_history:
+			prompt_parts.append("\n\nPrevious conversation context:")
+			for entry in self.conversation_history[-10:]:  # Last 10 messages
+				prompt_parts.append(f"Original: {entry['original']}")
+				prompt_parts.append(f"Translated: {entry['translated']}")
+		
+		# Add current text to translate
+		prompt_parts.append(f"\n\nText to translate:\n{text}")
+		
+		return "\n".join(prompt_parts)
+	
+	def _translateWithSDK(self, prompt: str) -> Optional[str]:
+		"""Translate using google-genai SDK."""
+		try:
+			# Map thinking budget to thinking level for Gemini 3
+			thinking_level = self.THINKING_LEVELS.get(self.thinking_budget, "low")
+			
+			config = types.GenerateContentConfig(
+				temperature=self.TEMPERATURE,
+				max_output_tokens=self.max_tokens,
+				thinking_config=types.ThinkingConfig(thinking_level=thinking_level)
 			)
 			
-			log.debug(f"Sending translation request to Gemini API")
-			response = request.urlopen(req, timeout=30)
-			response_data = json.loads(response.read().decode('utf-8'))
+			response = self.client.models.generate_content(
+				model=self.model,
+				contents=prompt,
+				config=config
+			)
 			
-			# Extract translated text from response
-			if "candidates" in response_data and len(response_data["candidates"]) > 0:
-				candidate = response_data["candidates"][0]
-				if "content" in candidate and "parts" in candidate["content"]:
-					translated_text = candidate["content"]["parts"][0]["text"].strip()
-					
-					# Update conversation history if enabled
-					if use_conversation_history:
-						self._updateConversationHistory(text, translated_text)
-					
-					log.debug(f"Translation successful")
-					return translated_text
-			
-			log.error("Unexpected response format from Gemini API")
+			if response and response.text:
+				return response.text.strip()
+			else:
+				log.error("Empty response from Gemini API")
+				return None
+		
+		except Exception as e:
+			log.error(f"SDK translation error: {str(e)}", exc_info=True)
 			return None
+	
+	def _translateWithREST(self, prompt: str) -> Optional[str]:
+		"""Translate using REST API as fallback."""
+		try:
+			# Map thinking budget to thinking level
+			thinking_level = self.THINKING_LEVELS.get(self.thinking_budget, "low")
 			
-		except error.HTTPError as e:
-			log.error(f"HTTP error during translation: {e.code} - {e.reason}")
+			url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
+			
+			headers = {
+				"x-goog-api-key": self.api_key,
+				"Content-Type": "application/json"
+			}
+			
+			data = {
+				"contents": [{
+					"parts": [{"text": prompt}]
+				}],
+				"generationConfig": {
+					"temperature": self.TEMPERATURE,
+					"maxOutputTokens": self.max_tokens,
+					"thinkingConfig": {
+						"thinkingLevel": thinking_level
+					}
+				}
+			}
+			
+			req = urllib.request.Request(
+				url,
+				data=json.dumps(data).encode('utf-8'),
+				headers=headers,
+				method='POST'
+			)
+			
+			with urllib.request.urlopen(req, timeout=30) as response:
+				result = json.loads(response.read().decode('utf-8'))
+				
+				if 'candidates' in result and len(result['candidates']) > 0:
+					candidate = result['candidates'][0]
+					if 'content' in candidate and 'parts' in candidate['content']:
+						parts = candidate['content']['parts']
+						if len(parts) > 0 and 'text' in parts[0]:
+							return parts[0]['text'].strip()
+			
+			log.error("Unexpected response structure from REST API")
 			return None
-		except error.URLError as e:
-			log.error(f"URL error during translation: {e.reason}")
+		
+		except urllib.error.HTTPError as e:
+			log.error(f"HTTP error {e.code}: {e.reason}")
+			return None
+		except urllib.error.URLError as e:
+			log.error(f"URL error: {str(e.reason)}")
 			return None
 		except Exception as e:
-			log.error(f"Error during translation: {str(e)}", exc_info=True)
+			log.error(f"REST translation error: {str(e)}", exc_info=True)
 			return None
 	
-	def _buildPrompt(self, text, use_conversation_history):
-		"""Build the prompt to send to Gemini."""
-		prompt = self.system_prompt.format(target_language=self.target_language)
-		
-		if use_conversation_history and self.conversation_history:
-			prompt += "\n\nPrevious conversation context:\n"
-			for entry in self.conversation_history:
-				prompt += f"{entry['role']}: {entry['text']}\n"
-		
-		prompt += f"\n\nText to translate:\n{text}"
-		return prompt
-	
-	def _updateConversationHistory(self, original, translated):
-		"""Update the conversation history with the latest exchange."""
+	def _addToHistory(self, original: str, translated: str):
+		"""Add translation to conversation history."""
 		self.conversation_history.append({
-			"role": "user",
-			"text": original
+			"original": original,
+			"translated": translated
 		})
-		self.conversation_history.append({
-			"role": "assistant",
-			"text": translated
-		})
+		
+		# Keep only last 20 entries to prevent memory issues
+		if len(self.conversation_history) > 20:
+			self.conversation_history = self.conversation_history[-20:]
 	
 	def clearConversationHistory(self):
 		"""Clear the conversation history."""
-		self.conversation_history = []
+		self.conversation_history.clear()
+		log.debug("Conversation history cleared")
 	
-	def setConversationHistoryLength(self, length):
-		"""Limit conversation history to specified length."""
-		if len(self.conversation_history) > length * 2:  # *2 because each exchange has 2 entries
-			self.conversation_history = self.conversation_history[-(length * 2):]
+	def updateSettings(self, api_key: str = None, target_language: str = None, 
+	                   system_prompt: str = None, thinking_budget: str = None, 
+	                   max_tokens: int = None, model: str = None):
+		"""
+		Update translator settings dynamically.
+		Useful when user changes settings without restarting NVDA.
+		"""
+		if api_key:
+			self.api_key = api_key
+			# Reinitialize client with new API key
+			if HAS_GOOGLE_GENAI:
+				try:
+					self.client = genai.Client(api_key=api_key)
+				except Exception as e:
+					log.error(f"Failed to reinitialize client: {str(e)}")
+		
+		if target_language:
+			self.target_language = target_language
+		
+		if system_prompt:
+			self.system_prompt = system_prompt
+		
+		if thinking_budget:
+			self.thinking_budget = thinking_budget
+		
+		if max_tokens:
+			self.max_tokens = max_tokens
+		
+		if model:
+			self.model = model
+			log.info(f"Model changed to: {model}")
 
 
 class AsyncTranslator:
-	"""Handles asynchronous translation requests."""
+	"""
+	Wrapper for asynchronous translation operations.
+	Runs translations in background threads to avoid blocking NVDA.
+	"""
 	
-	def __init__(self, translator):
-		self.translator = translator
-		self.callback = None
-		self.error_callback = None
-	
-	def translate(self, text, use_conversation_history=False, callback=None, error_callback=None):
-		"""Translate text asynchronously."""
-		self.callback = callback
-		self.error_callback = error_callback
+	def __init__(self, translator: GeminiTranslator):
+		"""
+		Initialize async translator.
 		
-		thread = threading.Thread(
-			target=self._translateWorker,
-			args=(text, use_conversation_history)
-		)
-		thread.daemon = True
-		thread.start()
+		Args:
+			translator: GeminiTranslator instance to use
+		"""
+		self.translator = translator
 	
-	def _translateWorker(self, text, use_conversation_history):
-		"""Worker thread for translation."""
-		try:
-			result = self.translator.translate(text, use_conversation_history)
-			if result is not None and self.callback:
-				self.callback(result)
-			elif result is None and self.error_callback:
-				self.error_callback("Translation failed")
-		except Exception as e:
-			log.error(f"Error in translation worker: {str(e)}", exc_info=True)
-			if self.error_callback:
-				self.error_callback(str(e))
+	def translate(self, text: str, use_conversation_mode: bool, 
+	              on_success: Callable[[str], None], 
+	              on_error: Callable[[str], None]):
+		"""
+		Translate text asynchronously.
+		
+		Args:
+			text: Text to translate
+			use_conversation_mode: Whether to use conversation history
+			on_success: Callback function called with translated text
+			on_error: Callback function called with error message
+		"""
+		def _translate_thread():
+			try:
+				result = self.translator.translate(text, use_conversation_mode)
+				if result:
+					on_success(result)
+				else:
+					on_error("Translation returned empty result")
+			except Exception as e:
+				log.error(f"Async translation error: {str(e)}", exc_info=True)
+				on_error(str(e))
+		
+		thread = threading.Thread(target=_translate_thread, daemon=True)
+		thread.start()

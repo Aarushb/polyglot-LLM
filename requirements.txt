@@ -1,0 +1,6 @@
+# Runtime dependencies for Polyglot-LLM NVDA addon
+
+# Optional: google-genai SDK for better performance
+# If not available, the addon will use REST API fallback
+# Install with: pip install google-genai
+google-genai>=1.0.0; python_version >= '3.9'

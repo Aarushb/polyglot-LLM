@@ -204,16 +204,18 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			return None
 		return None
 	
-	def _translateAsync(self, text, callback_message=None):
+	def _translateAsync(self, text, callback_message=None, skip_speech=False):
 		"""Translate text asynchronously and announce result."""
 		global _async_translator, _cache
 		
 		if not _translator:
-			ui.message(_("Translation not configured. Please set API key in settings."))
+			if not skip_speech:
+				ui.message(_("Translation not configured. Please set API key in settings."))
 			return
 		
 		if not text or not text.strip():
-			ui.message(_("No text to translate"))
+			if not skip_speech:
+				ui.message(_("No text to translate"))
 			return
 		
 		cfg = ch.getConfig()
@@ -240,7 +242,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		
 		if cached_translation:
 			self.lastTranslation = cached_translation
-			ui.message(cached_translation)
+			if not skip_speech:
+				ui.message(cached_translation)
 			if cfg["copy_translations"]:
 				api.copyToClip(cached_translation)
 			return
@@ -261,60 +264,51 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				)
 			
 			# Announce and optionally copy
-			queueHandler.queueFunction(queueHandler.eventQueue, ui.message, translated_text)
+			if not skip_speech:
+				queueHandler.queueFunction(queueHandler.eventQueue, ui.message, translated_text)
 			if cfg["copy_translations"]:
 				queueHandler.queueFunction(queueHandler.eventQueue, api.copyToClip, translated_text)
 		
 		def on_error(error_msg):
-			queueHandler.queueFunction(queueHandler.eventQueue, ui.message, _("Translation failed"))
+			if not skip_speech:
+				queueHandler.queueFunction(queueHandler.eventQueue, ui.message, _("Translation failed"))
 		
 		_async_translator.translate(text, conversation_mode, on_success, on_error)
 	
-	# Real-Time Translation Mode Scripts
+	# Translation Layer Scripts
 	
 	@scriptHandler.script(
-		description=_("Toggle real-time translation mode"),
-		gesture="kb:NVDA+shift+control+t"
+		description=_("Activate translation layer"),
+		gesture="kb:NVDA+shift+t",
+		category=_("Polyglot-LLM")
 	)
-	def script_toggleRealTimeTranslation(self, gesture):
-		"""Toggle real-time translation on/off."""
-		cfg = ch.getConfig()
-		cfg["real_time_enabled"] = not cfg["real_time_enabled"]
-		ch.saveConfig()
-		
-		if cfg["real_time_enabled"]:
-			ui.message(_("Real-time translation enabled"))
-		else:
-			ui.message(_("Real-time translation disabled"))
-	
-	# On-Demand Translation Mode Scripts (Layer)
-	
-	@scriptHandler.script(
-		description=_("Activate instant translate layer"),
-		gesture="kb:NVDA+shift+t"
-	)
-	def script_instantTranslateLayer(self, gesture):
-		"""Activate the instant translate layer."""
+	def script_activateTranslationLayer(self, gesture):
+		"""Activate the translation layer."""
 		# Bind layer gestures
-		self.bindGestures(self.__ITGestures)
-		ui.message(_("Instant translate"))
+		self.bindGestures(self.__layerGestures)
+		# Play sound instead of speech to avoid translation
+		import tones
+		tones.beep(500, 50)
 	
 	@scriptHandler.script(
-		description=_("Translate selected text")
+		description=_("Translate selected text"),
+		category=_("Polyglot-LLM")
 	)
 	def script_translateSelection(self, gesture):
 		"""Translate selected text."""
 		text = self._getSelectedText()
 		if not text:
 			ui.message(_("No selection"))
+			# Stay in layer
 			return
 		self._translateAsync(text)
-		# Clear layer
+		# Exit layer after translation
 		self.clearGestureBindings()
 		self.bindGestures(self.__gestures)
 	
 	@scriptHandler.script(
-		description=_("Translate clipboard text")
+		description=_("Translate clipboard text"),
+		category=_("Polyglot-LLM")
 	)
 	def script_translateClipboard(self, gesture):
 		"""Translate clipboard content."""
@@ -325,15 +319,17 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		
 		if not text or not isinstance(text, str) or text.isspace():
 			ui.message(_("Clipboard is empty"))
+			# Stay in layer
 			return
 		
 		self._translateAsync(text)
-		# Clear layer
+		# Exit layer after translation
 		self.clearGestureBindings()
 		self.bindGestures(self.__gestures)
 	
 	@scriptHandler.script(
-		description=_("Translate last spoken text")
+		description=_("Translate last spoken text"),
+		category=_("Polyglot-LLM")
 	)
 	def script_translateLastSpoken(self, gesture):
 		"""Translate the last spoken text."""
@@ -341,38 +337,44 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._translateAsync(self.lastSpokenText)
 		else:
 			ui.message(_("No last spoken text"))
-		# Clear layer
+			# Stay in layer
+			return
+		# Exit layer after translation
 		self.clearGestureBindings()
 		self.bindGestures(self.__gestures)
 	
 	@scriptHandler.script(
-		description=_("Copy last translation to clipboard")
+		description=_("Copy last translation to clipboard"),
+		category=_("Polyglot-LLM")
 	)
 	def script_copyLastTranslation(self, gesture):
 		"""Copy last translation to clipboard."""
 		if self.lastTranslation:
 			api.copyToClip(self.lastTranslation)
-			ui.message(_("Translation copied to clipboard"))
+			ui.message(_("Translation copied"))
 		else:
 			ui.message(_("No translation to copy"))
-		# Clear layer
-		self.clearGestureBindings()
-		self.bindGestures(self.__gestures)
+		# Stay in layer for more commands
 	
 	@scriptHandler.script(
-		description=_("Announce current language configuration")
+		description=_("Announce current translation settings"),
+		category=_("Polyglot-LLM")
 	)
-	def script_announceLanguages(self, gesture):
-		"""Announce current language configuration."""
+	def script_announceSettings(self, gesture):
+		"""Announce current translation settings."""
 		cfg = ch.getConfig()
 		target_lang = languages.getLanguageName(cfg["target_language"])
-		ui.message(_("Translating to {language}").format(language=target_lang))
-		# Clear layer
-		self.clearGestureBindings()
-		self.bindGestures(self.__gestures)
+		convo_status = _("on") if cfg["conversation_mode"] else _("off")
+		realtime_status = _("on") if cfg["real_time_enabled"] else _("off")
+		message = _("Target: {lang}, Conversation: {convo}, Real-time: {rt}").format(
+			lang=target_lang, convo=convo_status, rt=realtime_status
+		)
+		ui.message(message)
+		# Stay in layer
 	
 	@scriptHandler.script(
-		description=_("Toggle conversation mode")
+		description=_("Toggle conversation mode"),
+		category=_("Polyglot-LLM")
 	)
 	def script_toggleConversationMode(self, gesture):
 		"""Toggle conversation mode."""
@@ -381,43 +383,95 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		ch.saveConfig()
 		
 		if cfg["conversation_mode"]:
-			ui.message(_("Conversation mode enabled"))
+			ui.message(_("Conversation mode on"))
 		else:
-			# Clear conversation history
+			# Clear conversation history when disabling
 			if _translator:
 				_translator.clearConversationHistory()
-			ui.message(_("Conversation mode disabled"))
-		# Clear layer
-		self.clearGestureBindings()
-		self.bindGestures(self.__gestures)
+			ui.message(_("Conversation mode off"))
+		# Stay in layer for more commands
 	
 	@scriptHandler.script(
-		description=_("Clear conversation history")
+		description=_("Toggle real-time translation mode"),
+		category=_("Polyglot-LLM")
 	)
-	def script_clearConversationHistory(self, gesture):
-		"""Clear the conversation history."""
-		if _translator:
-			_translator.clearConversationHistory()
-			ui.message(_("Conversation history cleared"))
+	def script_toggleRealTimeTranslation(self, gesture):
+		"""Toggle real-time translation on/off."""
+		cfg = ch.getConfig()
+		cfg["real_time_enabled"] = not cfg["real_time_enabled"]
+		ch.saveConfig()
+		
+		if cfg["real_time_enabled"]:
+			ui.message(_("Real-time on"))
 		else:
-			ui.message(_("Translator not initialized"))
-		# Clear layer
+			ui.message(_("Real-time off"))
+		# Stay in layer for more commands
+	
+	@scriptHandler.script(
+		description=_("Clear translation cache for current application"),
+		category=_("Polyglot-LLM")
+	)
+	def script_clearCache(self, gesture):
+		"""Clear translation cache for current application."""
+		global _cache
+		try:
+			app_name = globalVars.focusObject.appModule.appName
+		except:
+			app_name = "__global__"
+		
+		if _cache:
+			_cache.clearApp(app_name)
+			ui.message(_("Cache cleared"))
+		else:
+			ui.message(_("Cache not initialized"))
+		# Stay in layer
+	
+	@scriptHandler.script(
+		description=_("Show translation layer help"),
+		category=_("Polyglot-LLM")
+	)
+	def script_layerHelp(self, gesture):
+		"""Display help for translation layer commands."""
+		help_text = _(
+			"T: Translate selection, "
+			"Shift+T: Clipboard, "
+			"L: Last speech, "
+			"C: Copy last, "
+			"M: Toggle conversation mode, "
+			"R: Toggle real-time, "
+			"X: Clear cache, "
+			"S: Settings, "
+			"Escape: Exit layer"
+		)
+		ui.message(help_text)
+		# Stay in layer
+	
+	@scriptHandler.script(
+		description=_("Exit translation layer"),
+		category=_("Polyglot-LLM")
+	)
+	def script_exitLayer(self, gesture):
+		"""Exit the translation layer."""
 		self.clearGestureBindings()
 		self.bindGestures(self.__gestures)
+		import tones
+		tones.beep(400, 50)
 	
 	# Layer gestures (active after NVDA+Shift+T)
-	__ITGestures = {
+	__layerGestures = {
 		"kb:t": "translateSelection",
 		"kb:shift+t": "translateClipboard",
 		"kb:l": "translateLastSpoken",
 		"kb:c": "copyLastTranslation",
-		"kb:a": "announceLanguages",
-		"kb:v": "toggleConversationMode",
-		"kb:h": "clearConversationHistory",
+		"kb:m": "toggleConversationMode",
+		"kb:r": "toggleRealTimeTranslation",
+		"kb:x": "clearCache",
+		"kb:s": "announceSettings",
+		"kb:h": "layerHelp",
+		"kb:escape": "exitLayer",
 	}
 	
 	# Main gestures
 	__gestures = {
-		"kb:NVDA+shift+control+t": "toggleRealTimeTranslation",
-		"kb:NVDA+shift+t": "instantTranslateLayer",
+		"kb:NVDA+shift+t": "activateTranslationLayer",
 	}

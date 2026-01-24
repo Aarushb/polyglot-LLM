@@ -6,37 +6,60 @@ Polyglot-LLM is an NVDA addon that provides both real-time automatic translation
 
 ## ✨ Features
 
-### Two Translation Modes
+### Unified Translation Layer
+
+**Press `NVDA+Shift+T` to enter the translation layer, then:**
+
+**Translation Commands:**
+- `T` - Translate selected text
+- `Shift+T` - Translate clipboard content
+- `L` - Translate last spoken text
+- `C` - Copy last translation to clipboard
+
+**Mode Toggles:**
+- `R` - Toggle real-time translation (auto-translate all speech)
+- `M` - Toggle conversation mode (context-aware translations)
+
+**Utility Commands:**
+- `S` - Announce current settings (target language, modes status)
+- `X` - Clear translation cache for current application
+- `H` - Show layer help
+- `Escape` - Exit layer
+
+### Translation Modes
 
 **Real-Time Translation** - Automatically translates all NVDA speech
+- Enable/disable with `R` key in the layer
 - Perfect for live chats, streaming content, or conversations
-- Toggle with `NVDA+Shift+Control+T`
 - Smart caching minimizes delays
+- Works seamlessly with conversation mode
 
 **On-Demand Translation** - Selective translation when you need it
-- Press `NVDA+Shift+T` to enter translation layer, then:
-  - `T` - Translate selected text
-  - `Shift+T` - Translate clipboard
-  - `L` - Translate last spoken text
-  - `C` - Copy last translation to clipboard
-  - `A` - Announce current language settings
-  - `V` - View conversation history
-  - `H` - Help (list gestures)
+- Use layer commands (`T`, `Shift+T`, `L`) to translate specific text
+- Exit layer automatically after translation
+- Perfect for emails, documents, or clipboard content
 
 ### Conversation Mode
 
-Enable in settings for context-aware translations:
-- Remembers recent messages in the conversation
+Enable with `M` key in the layer for context-aware translations:
+- Remembers last 5-10 messages in the conversation
 - AI understands pronouns, topic flow, and tone
 - Example: "Which movie?" vs "Which?" - context matters
+- Conversation history clears when you disable the mode
+- Works in both real-time and on-demand modes
 
 ### Smart Features
 
 - **Auto Language Detection** - No need to specify source language
 - **Intelligent Caching** - Reduces API costs and delays
+  - Non-conversation translations cached globally (reused across contexts)
+  - Conversation translations cached per-context (accurate for specific chats)
+  - Per-application cache files for better organization
 - **Customizable System Prompt** - Adjust translation behavior
 - **Thinking Budget** - Balance speed vs quality
 - **Max Token Limit** - Configurable with clear error messages
+- **Unified Layer Interface** - All commands accessible from one place
+- **Customizable Gestures** - Remap any command in NVDA's Input Gestures dialog
 
 ## 🚀 Quick Start
 
@@ -57,15 +80,23 @@ Enable in settings for context-aware translations:
 ### Usage
 
 **For Live Conversations:**
-- Enable conversation mode in settings
-- Press `NVDA+Shift+Control+T` to turn on real-time translation
-- Chat normally - everything is automatically translated
-- Press `NVDA+Shift+Control+T` again to turn off
+1. Press `NVDA+Shift+T` to enter translation layer
+2. Press `M` to enable conversation mode (for context awareness)
+3. Press `R` to enable real-time translation
+4. Chat normally - everything is automatically translated with context
+5. Press `NVDA+Shift+T` → `R` again to disable when done
 
 **For Reading Foreign Text:**
-- Select text with `Shift+Arrows`
-- Press `NVDA+Shift+T`, then `T`
-- Translation is spoken and copied to clipboard
+1. Select text with `Shift+Arrows`
+2. Press `NVDA+Shift+T` to enter layer
+3. Press `T` to translate selection
+4. Translation is spoken and copied to clipboard
+
+**Quick Status Check:**
+- Press `NVDA+Shift+T` → `S` to hear current settings
+
+**Clear Cache:**
+- Press `NVDA+Shift+T` → `X` to clear cached translations for current app
 - Real-time communication
 
 ### On-Demand Translation Layer

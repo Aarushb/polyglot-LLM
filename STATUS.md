@@ -132,15 +132,18 @@
 - Error handling with user feedback
 
 **Gestures:**
-- `NVDA+Shift+Control+T` - Toggle real-time mode
 - `NVDA+Shift+T` - Enter translation layer
-  - `T` - Translate selected text
-  - `Shift+T` - Translate clipboard
-  - `L` - Translate last spoken text
-  - `C` - Copy last translation
-  - `A` - Announce language config
-  - `V` - View conversation history
-  - `H` - Help (list gestures)
+  - **In layer:**
+    - `T` - Translate selected text
+    - `Shift+T` - Translate clipboard
+    - `L` - Translate last spoken text
+    - `C` - Copy last translation
+    - `M` - Toggle conversation mode
+    - `R` - Toggle real-time mode
+    - `X` - Clear cache for current app
+    - `S` - Announce current settings
+    - `H` - Show help
+    - `Escape` - Exit layer
 
 ### 7. Language Support ✓
 
@@ -301,11 +304,23 @@ None currently - testing phase not started.
 
 2. **Temperature locked at 1.0** - Per Google's recommendation for Gemini 3 models. Not configurable to prevent unexpected behavior.
 
-3. **Context-aware caching** - Cache keys include conversation hash to prevent wrong translations in different contexts.
+3. **Smart context-aware caching** - 
+   - Non-conversation mode: Cache by text + language only (global reuse)
+   - Conversation mode: Cache by text + language + conversation context (5 recent messages)
+   - Conversation cache clears when mode is disabled
+   - Per-application cache files for organization
 
-4. **Async translation** - On-demand mode uses threading to avoid blocking NVDA UI. Real-time mode is synchronous but uses cache for speed.
+4. **Unified layer interface** - All controls accessible from one layer (`NVDA+Shift+T`) instead of separate hotkeys. Benefits:
+   - Easier to remember (one entry point)
+   - Can stack modes (enable both real-time + conversation together)
+   - Prevents accidental translations of layer commands
+   - All gestures customizable in NVDA's Input Gestures dialog
 
-5. **NVDA-native config** - Uses `config.conf` instead of ConfigObj (which isn't bundled with NVDA).
+5. **Sound instead of speech for layer activation** - Prevents layer activation message from being translated when real-time mode is on.
+
+6. **NVDA-native config** - Uses `config.conf` instead of ConfigObj (which isn't bundled with NVDA).
+
+7. **Layer stays active for mode toggles** - Commands like `M`, `R`, `S`, `X`, `H` keep layer open for multiple operations. Translation commands (`T`, `Shift+T`, `L`) exit layer after completing.
 
 ### Reference Addons Used
 

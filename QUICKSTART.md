@@ -40,10 +40,19 @@ This creates `polyglotLLM-{version}.nvda-addon`
 
 ### 5. Test It!
 
+**Translation layer:**
+- Press `NVDA+Shift+T` (layer activated - beep sound)
+- Press `H` to hear available commands
+- Press `S` to hear current settings
+
 **Real-time translation:**
-- Press `NVDA+Shift+Control+T` to toggle on
+- Press `NVDA+Shift+T` then `R` to toggle real-time on
 - Navigate to any text - it will auto-translate
-- Press `NVDA+Shift+Control+T` again to toggle off
+- Press `NVDA+Shift+T` then `R` again to toggle off
+
+**Conversation mode:**
+- Press `NVDA+Shift+T` then `M` to toggle conversation mode
+- Combine with real-time (`R`) for context-aware live translation
 
 **On-demand translation:**
 - Select some text with `Shift+Arrows`
@@ -148,7 +157,25 @@ print(result)
 
 **File:** `__init__.py`
 
-Look for `__gestures` dictionary and `script_*` methods.
+Look for `__layerGestures` dictionary and `script_*` methods.
+
+**Current layer gestures:**
+```python
+__layerGestures = {
+    "kb:t": "translateSelection",
+    "kb:shift+t": "translateClipboard",
+    "kb:l": "translateLastSpoken",
+    "kb:c": "copyLastTranslation",
+    "kb:m": "toggleConversationMode",
+    "kb:r": "toggleRealTimeTranslation",
+    "kb:x": "clearCache",
+    "kb:s": "announceSettings",
+    "kb:h": "layerHelp",
+    "kb:escape": "exitLayer",
+}
+```
+
+**Note:** Users can customize these in NVDA's Input Gestures dialog without editing code.
 
 ### Adjusting Cache Behavior
 

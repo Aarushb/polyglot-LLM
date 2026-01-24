@@ -61,6 +61,41 @@ DEFAULT_MODEL = "gemini-3-flash-preview"  # Change this
 # - gemini-2.5-pro
 ```
 
+## Gesture System
+
+### Unified Layer Approach
+
+All translation controls are accessed through a single layer (`NVDA+Shift+T`) instead of multiple top-level hotkeys. This provides:
+
+- **Simplicity** - One hotkey to remember
+- **Flexibility** - Can combine modes (real-time + conversation)
+- **Safety** - Prevents layer commands from being translated
+- **Customizability** - All gestures modifiable in Input Gestures dialog
+
+### Layer Commands
+
+**Translation:**
+- `T` - Translate selection (exits layer after)
+- `Shift+T` - Translate clipboard (exits layer after)
+- `L` - Translate last speech (exits layer after)
+- `C` - Copy last translation (stays in layer)
+
+**Mode Toggles:**
+- `M` - Toggle conversation mode (stays in layer)
+- `R` - Toggle real-time mode (stays in layer)
+
+**Utility:**
+- `S` - Announce settings (stays in layer)
+- `X` - Clear cache (stays in layer)
+- `H` - Show help (stays in layer)
+- `Escape` - Exit layer
+
+### Customization
+
+All gestures are customizable in NVDA → Preferences → Input Gestures → Polyglot-LLM category.
+
+The `scriptCategory` class attribute ensures all scripts appear under "Polyglot-LLM" in the Input Gestures dialog.
+
 ### Thinking Budget
 
 Gemini 3 uses `thinkingLevel` parameter:
@@ -156,33 +191,55 @@ print(result)
 2. **`gemini_translator.py`** - API integration (SDK + REST)
 3. **`config_handler.py`** - NVDA config system integration
 4. **`settings_panel.py`** - Settings GUI
-5. **`cache.py`** - Translation caching system
+5. **`cache.py`** - Smart translation caching system
 6. **`languages.py`** - Language definitions
 
 ### Translation Flow
 
 #### Real-Time Mode:
 ```
-NVDA speech → _speak() → Check cache → Translate → Update cache → Speak translated
+NVDA speech → _speak() → Check cache → Translate (if needed) → Update cache → Speak translated
 ```
 
-#### On-Demand Mode:
+#### On-Demand Mode (Layer):
 ```
-User gesture → Get text → AsyncTranslator → Translate in thread → Announce result
+User gesture → Get text → AsyncTranslator → Translate in thread → Announce result → Cache
 ```
+
+### Caching Strategy
+
+**Smart context-aware caching:**
+
+1. **Without conversation mode:**
+   - Cache key: `text + language + "global"`
+   - Reused across all contexts and applications
+   - Perfect for repeated phrases ("Hello", "Thank you", etc.)
+
+2. **With conversation mode:**
+   - Cache key: `text + language + "convo:" + context_hash`
+   - Context hash based on last 5 messages
+   - Context-specific translations
+   - Example: "That's cool" has different tone depending on conversation
+
+3. **Per-application caching:**
+   - Separate cache files for each application
+   - Easy to clear cache for specific apps
+   - Better organization and management
 
 ### Conversation Mode
 
 When enabled:
-1. Stores last N translations in `conversation_history`
-2. Includes history in prompt for context
-3. Cache keys include conversation hash
-4. Better for multi-turn conversations
+1. Stores last N translations in `conversation_history` (configurable 5-20, default 10)
+2. Includes last 5 messages in context hash for cache keys
+3. Sends full history to LLM for translation
+4. History clears when conversation mode is disabled
+5. Better for multi-turn conversations with pronouns and references
 
 When disabled:
 - Faster (no context overhead)
-- Lower API costs
+- Lower API costs (shorter prompts)
 - Each translation independent
+- Better for one-off translations
 
 ## Future Improvements
 

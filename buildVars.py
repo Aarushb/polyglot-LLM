@@ -23,12 +23,7 @@ addon_info = {
 	"addon_summary": _("Polyglot-LLM"),
 	# Add-on description
 	# Translators: Long description to be shown for this add-on on add-on information from add-ons manager
-	"addon_description": _("""AI-powered real-time and on-demand translation for NVDA using Google Gemini.
-This addon enables seamless communication between blind screen reader users speaking different languages.
-Features context-aware translations with conversation mode for better accuracy.
-Press NVDA+Shift+Control+T to toggle real-time translation mode.
-Press NVDA+Shift+T for on-demand translation layer.
-Configure your Gemini API key and target language in NVDA Preferences."""),
+	"addon_description": _("""AI-powered real-time and on-demand translation for NVDA using Google Gemini. This addon enables seamless communication between blind screen reader users speaking different languages. Features context-aware translations with conversation mode for better accuracy. Press NVDA+Shift+T to enter the translation layer. Configure your Gemini API key and target language in NVDA Preferences."""),
 	# version
 	"addon_version": "2025.01.24",
 	# Author(s)

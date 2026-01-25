@@ -11,18 +11,25 @@ cd polyglot-LLM
 
 ### 2. Build the Addon
 
-**Option A: Using the build script (recommended)**
+**Option A: Using the batch file (Windows - easiest)**
+```cmd
+build.bat
+```
+
+**Option B: Using PowerShell script** (requires execution policy)
 ```powershell
 .\build.ps1
 ```
 
-**Option B: Manual build**
+**Option C: Manual build**
 ```bash
 pip install -r requirements-build.txt
-scons
+python -m SCons
 ```
 
 This creates `polyglotLLM-{version}.nvda-addon`
+
+**Note:** Build works without gettext/msgfmt - translations will be skipped with a warning.
 
 ### 3. Install in NVDA
 

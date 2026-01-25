@@ -181,25 +181,18 @@ class TranslationCache:
 	
 	def clearConversationCache(self, app_name="__global__"):
 		"""
-		Clear ONLY conversation cache entries ('convo' keys).
-		App cache ('global' keys) is NEVER touched here.
-		Called when conversation mode is enabled OR disabled.
+		Clear conversation cache (memory only).
+		App cache on disk is NEVER touched.
 		"""
-		# Clear ONLY conversation entries from memory (those ending with convo hash)
-		# We can't distinguish easily in memory, so we clear all memory for this app
-		# But we MUST preserve global entries on disk
-		keys_to_remove = [k for k in self.memory_cache.keys() if k.startswith(f"{app_name}:\")]
+		# Clear all memory for this app
+		# App cache will reload from disk on next access
+		# Conversation cache stays cleared (not on disk)
+		prefix = f"{app_name}:"
+		keys_to_remove = [k for k in self.memory_cache.keys() if k.startswith(prefix)]
 		for key in keys_to_remove:
 			del self.memory_cache[key]
 		
-		# Disk cache: We need to preserve 'global' entries and remove 'convo' entries
-		# Problem: keys are hashed, can't tell them apart
-		# Solution: Store them in separate files
-		# For now: DON'T touch disk at all - memory clear is enough
-		# Conversation cache will miss and re-translate (correct behavior)
-		# Global cache stays on disk, will reload into memory on access
-		
-		log.info(f"Conversation memory cache cleared for app: {app_name}")
+		log.info(f"Conversation cache cleared for app: {app_name}")
 	
 	def clearAll(self):
 		"""Clear all caches."""

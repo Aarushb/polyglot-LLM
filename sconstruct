@@ -202,17 +202,27 @@ addon = env.NVDAAddon(addonFile, env.Dir('addon'))
 
 langDirs = [f for f in env.Glob(os.path.join("addon", "locale", "*"))]
 
+# Check if msgfmt is available
+import shutil
+msgfmtAvailable = shutil.which("msgfmt") is not None
+
 # Allow all NVDA's gettext po files to be compiled in source/locale, and manifest files to be generated
-for dir in langDirs:
-	poFile = dir.File(os.path.join("LC_MESSAGES", "nvda.po"))
-	moFile = env.gettextMoFile(poFile)
-	env.Depends(moFile, poFile)
-	translatedManifest = env.NVDATranslatedManifest(
-		dir.File("manifest.ini"),
-		[moFile, os.path.join("manifest-translated.ini.tpl")]
-	)
-	env.Depends(translatedManifest, ["buildVars.py"])
-	env.Depends(addon, [translatedManifest, moFile])
+# Only if msgfmt is available
+if msgfmtAvailable:
+	for dir in langDirs:
+		poFile = dir.File(os.path.join("LC_MESSAGES", "nvda.po"))
+		moFile = env.gettextMoFile(poFile)
+		env.Depends(moFile, poFile)
+		translatedManifest = env.NVDATranslatedManifest(
+			dir.File("manifest.ini"),
+			[moFile, os.path.join("manifest-translated.ini.tpl")]
+		)
+		env.Depends(translatedManifest, ["buildVars.py"])
+		env.Depends(addon, [translatedManifest, moFile])
+else:
+	print("Warning: msgfmt not found - translations will not be compiled")
+	print("To enable translations, install gettext tools")
+	print("Continuing build without translations...")
 
 pythonFiles = expandGlobs(buildVars.pythonSources)
 for file in pythonFiles:

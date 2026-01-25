@@ -272,6 +272,7 @@ class AsyncTranslator:
 	"""
 	Wrapper for asynchronous translation operations.
 	Runs translations in background threads to avoid blocking NVDA.
+	Includes request queue management to prevent flooding.
 	"""
 	
 	def __init__(self, translator: GeminiTranslator):
@@ -282,29 +283,107 @@ class AsyncTranslator:
 			translator: GeminiTranslator instance to use
 		"""
 		self.translator = translator
+		self.pending_requests = {}  # Track pending requests by ID
+		self.request_counter = 0
+		self._lock = threading.Lock()
 	
 	def translate(self, text: str, use_conversation_mode: bool, 
 	              on_success: Callable[[str], None], 
-	              on_error: Callable[[str], None]):
+	              on_error: Callable[[str], None],
+	              request_type: str = "on_demand",
+	              cancel_previous: bool = False) -> int:
 		"""
-		Translate text asynchronously.
+		Translate text asynchronously with queue management.
 		
 		Args:
 			text: Text to translate
 			use_conversation_mode: Whether to use conversation history
 			on_success: Callback function called with translated text
 			on_error: Callback function called with error message
+			request_type: Type of request ("real_time" or "on_demand")
+			cancel_previous: If True, cancel previous requests of same type
+		
+		Returns:
+			Request ID for tracking
 		"""
+		with self._lock:
+			self.request_counter += 1
+			request_id = self.request_counter
+			
+			# Cancel previous requests of same type if requested
+			if cancel_previous:
+				for rid, req_info in list(self.pending_requests.items()):
+					if req_info["type"] == request_type:
+						req_info["cancelled"] = True
+						log.debug(f"Cancelled request {rid} (type: {request_type})")
+			
+			# Register this request
+			self.pending_requests[request_id] = {
+				"type": request_type,
+				"cancelled": False,
+				"text": text
+			}
+		
 		def _translate_thread():
 			try:
+				# Check if cancelled before starting
+				with self._lock:
+					if self.pending_requests.get(request_id, {}).get("cancelled", False):
+						log.debug(f"Skipping cancelled request {request_id}")
+						return
+				
 				result = self.translator.translate(text, use_conversation_mode)
+				
+				# Check if cancelled after translation
+				with self._lock:
+					if self.pending_requests.get(request_id, {}).get("cancelled", False):
+						log.debug(f"Discarding result for cancelled request {request_id}")
+						return
+				
 				if result:
 					on_success(result)
 				else:
 					on_error("Translation returned empty result")
 			except Exception as e:
 				log.error(f"Async translation error: {str(e)}", exc_info=True)
-				on_error(str(e))
+				with self._lock:
+					if not self.pending_requests.get(request_id, {}).get("cancelled", False):
+						on_error(str(e))
+			finally:
+				# Clean up request tracking
+				with self._lock:
+					self.pending_requests.pop(request_id, None)
 		
 		thread = threading.Thread(target=_translate_thread, daemon=True)
 		thread.start()
+		return request_id
+	
+	def cancel_all(self, request_type: str = None):
+		"""
+		Cancel all pending requests, optionally filtered by type.
+		
+		Args:
+			request_type: If specified, only cancel requests of this type
+		"""
+		with self._lock:
+			for rid, req_info in list(self.pending_requests.items()):
+				if request_type is None or req_info["type"] == request_type:
+					req_info["cancelled"] = True
+					log.debug(f"Cancelled request {rid}")
+	
+	def get_pending_count(self, request_type: str = None) -> int:
+		"""
+		Get count of pending requests.
+		
+		Args:
+			request_type: If specified, only count requests of this type
+		
+		Returns:
+			Number of pending requests
+		"""
+		with self._lock:
+			if request_type is None:
+				return len([r for r in self.pending_requests.values() if not r["cancelled"]])
+			else:
+				return len([r for r in self.pending_requests.values() 
+				           if r["type"] == request_type and not r["cancelled"]])

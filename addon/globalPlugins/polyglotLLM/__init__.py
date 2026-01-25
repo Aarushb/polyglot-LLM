@@ -121,8 +121,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _speak(self, speechSequence, priority=None):
 		"""
 		Override NVDA's speak function for real-time translation.
+		Uses async translation with queue management to prevent freezing.
 		"""
-		global _translator, _cache, _lastTranslatedText
+		global _translator, _async_translator, _cache, _lastTranslatedText
 		
 		cfg = ch.getConfig()
 		real_time_enabled = cfg["real_time_enabled"]
@@ -161,7 +162,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			)
 		
 		if cached_translation:
-			# Use cached translation
+			# Use cached translation immediately
 			translated_text = cached_translation
 			_lastTranslatedText = translated_text
 			
@@ -169,13 +170,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			newSpeechSequence = [translated_text if isinstance(x, str) else x for x in speechSequence]
 			return _nvdaSpeak(speechSequence=newSpeechSequence, priority=priority)
 		
-		# Translate synchronously for real-time mode
-		translated_text = _translator.translate(text_to_translate, conversation_mode)
+		# Not cached - speak original first, translate async in background
+		# This prevents freezing but means first occurrence won't be translated
+		# Subsequent identical text will use cache and translate immediately
 		
-		if translated_text:
+		# Speak original text first to avoid silence
+		_nvdaSpeak(speechSequence=speechSequence, priority=priority)
+		
+		# Start async translation (cancel previous real-time requests)
+		def on_success(translated_text):
+			global _lastTranslatedText
 			_lastTranslatedText = translated_text
 			
-			# Cache the translation
+			# Cache for next time
 			if cfg["cache_translations"]:
 				_cache.set(
 					text_to_translate,
@@ -185,13 +192,20 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					conversation_mode,
 					conversation_history
 				)
-			
-			# Create new speech sequence with translated text
-			newSpeechSequence = [translated_text if isinstance(x, str) else x for x in speechSequence]
-			return _nvdaSpeak(speechSequence=newSpeechSequence, priority=priority)
-		else:
-			# Translation failed, use original text
-			return _nvdaSpeak(speechSequence=speechSequence, priority=priority)
+		
+		def on_error(error_msg):
+			log.debug(f"Real-time translation failed: {error_msg}")
+		
+		# Translate async, cancel previous real-time requests to prevent queue buildup
+		if _async_translator:
+			_async_translator.translate(
+				text_to_translate,
+				conversation_mode,
+				on_success,
+				on_error,
+				request_type="real_time",
+				cancel_previous=True  # Cancel older real-time requests
+			)
 	
 	def _getSelectedText(self):
 		"""Get currently selected text."""
@@ -273,7 +287,15 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if not skip_speech:
 				queueHandler.queueFunction(queueHandler.eventQueue, ui.message, _("Translation failed"))
 		
-		_async_translator.translate(text, conversation_mode, on_success, on_error)
+		# On-demand requests don't cancel each other (user explicitly requested each)
+		_async_translator.translate(
+			text, 
+			conversation_mode, 
+			on_success, 
+			on_error,
+			request_type="on_demand",
+			cancel_previous=False
+		)
 	
 	# Translation Layer Scripts
 	
@@ -382,17 +404,24 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	)
 	def script_toggleConversationMode(self, gesture):
 		"""Toggle conversation mode."""
+		global _cache
 		cfg = ch.getConfig()
 		cfg["conversation_mode"] = not cfg["conversation_mode"]
 		ch.saveConfig()
 		
 		if cfg["conversation_mode"]:
-			ui.message(_("Conversation mode on"))
+			queueHandler.queueFunction(queueHandler.eventQueue, ui.message, _("Conversation mode on"))
 		else:
-			# Clear conversation history when disabling
+			# Clear conversation history and cache when disabling
 			if _translator:
 				_translator.clearConversationHistory()
-			ui.message(_("Conversation mode off"))
+			if _cache:
+				try:
+					app_name = globalVars.focusObject.appModule.appName
+				except:
+					app_name = "__global__"
+				_cache.clearConversationCache(app_name)
+			queueHandler.queueFunction(queueHandler.eventQueue, ui.message, _("Conversation mode off"))
 		# Exit layer
 		self.clearGestureBindings()
 		self.bindGestures(self.__gestures)
@@ -403,14 +432,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	)
 	def script_toggleRealTimeTranslation(self, gesture):
 		"""Toggle real-time translation on/off."""
+		global _async_translator
 		cfg = ch.getConfig()
 		cfg["real_time_enabled"] = not cfg["real_time_enabled"]
 		ch.saveConfig()
 		
+		# Cancel pending real-time requests when toggling off
+		if not cfg["real_time_enabled"] and _async_translator:
+			_async_translator.cancel_all(request_type="real_time")
+		
 		if cfg["real_time_enabled"]:
-			ui.message(_("Real-time on"))
+			queueHandler.queueFunction(queueHandler.eventQueue, ui.message, _("Real-time on"))
 		else:
-			ui.message(_("Real-time off"))
+			queueHandler.queueFunction(queueHandler.eventQueue, ui.message, _("Real-time off"))
 		# Exit layer
 		self.clearGestureBindings()
 		self.bindGestures(self.__gestures)

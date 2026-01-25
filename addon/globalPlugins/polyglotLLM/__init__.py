@@ -162,7 +162,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			)
 		
 		if cached_translation:
-			# Use cached translation immediately
+			# Use cached translation
 			translated_text = cached_translation
 			_lastTranslatedText = translated_text
 			
@@ -170,12 +170,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			newSpeechSequence = [translated_text if isinstance(x, str) else x for x in speechSequence]
 			return _nvdaSpeak(speechSequence=newSpeechSequence, priority=priority)
 		
-		# Not cached - need to translate
-		# Cancel any pending real-time requests to prevent buildup
-		if _async_translator:
-			_async_translator.cancel_all(request_type="real_time")
-		
-		# Translate synchronously (NVDA requires this for speech interception to work)
+		# Translate synchronously for real-time mode
 		translated_text = _translator.translate(text_to_translate, conversation_mode)
 		
 		if translated_text:

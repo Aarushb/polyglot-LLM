@@ -121,7 +121,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _speak(self, speechSequence, priority=None):
 		"""
 		Override NVDA's speak function for real-time translation.
-		Uses async translation with queue management to prevent freezing.
+		Uses synchronous translation but with smart request management.
 		"""
 		global _translator, _async_translator, _cache, _lastTranslatedText
 		
@@ -170,19 +170,18 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			newSpeechSequence = [translated_text if isinstance(x, str) else x for x in speechSequence]
 			return _nvdaSpeak(speechSequence=newSpeechSequence, priority=priority)
 		
-		# Not cached - speak original first, translate async in background
-		# This prevents freezing but means first occurrence won't be translated
-		# Subsequent identical text will use cache and translate immediately
+		# Not cached - need to translate
+		# Cancel any pending real-time requests to prevent buildup
+		if _async_translator:
+			_async_translator.cancel_all(request_type="real_time")
 		
-		# Speak original text first to avoid silence
-		_nvdaSpeak(speechSequence=speechSequence, priority=priority)
+		# Translate synchronously (NVDA requires this for speech interception to work)
+		translated_text = _translator.translate(text_to_translate, conversation_mode)
 		
-		# Start async translation (cancel previous real-time requests)
-		def on_success(translated_text):
-			global _lastTranslatedText
+		if translated_text:
 			_lastTranslatedText = translated_text
 			
-			# Cache for next time
+			# Cache the translation
 			if cfg["cache_translations"]:
 				_cache.set(
 					text_to_translate,
@@ -192,20 +191,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					conversation_mode,
 					conversation_history
 				)
-		
-		def on_error(error_msg):
-			log.debug(f"Real-time translation failed: {error_msg}")
-		
-		# Translate async, cancel previous real-time requests to prevent queue buildup
-		if _async_translator:
-			_async_translator.translate(
-				text_to_translate,
-				conversation_mode,
-				on_success,
-				on_error,
-				request_type="real_time",
-				cancel_previous=True  # Cancel older real-time requests
-			)
+			
+			# Create new speech sequence with translated text
+			newSpeechSequence = [translated_text if isinstance(x, str) else x for x in speechSequence]
+			return _nvdaSpeak(speechSequence=newSpeechSequence, priority=priority)
+		else:
+			# Translation failed, use original text
+			return _nvdaSpeak(speechSequence=speechSequence, priority=priority)
 	
 	def _getSelectedText(self):
 		"""Get currently selected text."""
@@ -437,9 +429,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		cfg["real_time_enabled"] = not cfg["real_time_enabled"]
 		ch.saveConfig()
 		
-		# Cancel pending real-time requests when toggling off
+		# Cancel any pending async requests when toggling off
 		if not cfg["real_time_enabled"] and _async_translator:
-			_async_translator.cancel_all(request_type="real_time")
+			_async_translator.cancel_all()
 		
 		if cfg["real_time_enabled"]:
 			queueHandler.queueFunction(queueHandler.eventQueue, ui.message, _("Real-time on"))

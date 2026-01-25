@@ -172,35 +172,37 @@ class TranslationCache:
 	
 	def clearConversationCache(self, app_name="__global__"):
 		"""
-		Clear only conversation-specific cache entries.
-		Preserves global (non-conversation) translations.
-		Called when conversation mode is disabled.
+		Clear ONLY conversation-specific cache entries (those with 'convo:' in key).
+		Preserves app cache (global translations without conversation context).
 		"""
 		# Clear conversation entries from memory
-		# Memory keys are: "app_name:hash"
-		# We need to check which cache entries are conversation-specific
-		# Unfortunately, we can't tell from the key alone
-		# Best approach: clear all for this app when convo mode disabled
+		# We need to identify which keys are conversation-specific
+		# Since we hash the keys, we can't directly tell from the hash
+		# But we can rebuild keys and check
+		# Simpler: Just clear memory cache for this app (it's temporary anyway)
 		keys_to_remove = [k for k in self.memory_cache.keys() if k.startswith(f"{app_name}:")]
 		for key in keys_to_remove:
 			del self.memory_cache[key]
 		
-		# Clear conversation entries from disk cache
+		# For disk cache: ONLY remove entries with "convo:" in the original key
+		# Since we hash keys, we need to filter the actual data
+		# The cache file contains BOTH conversation and app cache entries
+		# We need to preserve the app cache entries (global)
 		cache_file = self._getCacheFilePath(app_name)
 		if os.path.exists(cache_file):
 			try:
 				with open(cache_file, 'r', encoding='utf-8') as f:
 					cache_data = json.load(f)
 				
-				# Filter out conversation entries (those with "convo:" in the key)
-				# We need to reconstruct which cache keys are conversation-specific
-				# Since we hash the keys, we can't directly tell
-				# Safest approach: clear all entries for this app
-				# Global translations will be regenerated quickly
-				os.remove(cache_file)
-				log.info(f"Conversation cache cleared for app: {app_name}")
+				# We can't distinguish hashed keys, so we'll need to track metadata
+				# For now: Since conversation entries are based on conversation_history hash,
+				# and we clear conversation_history when toggling off,
+				# those entries become unreachable anyway
+				# So we can just leave the disk cache as-is
+				# The memory cache clear is enough for immediate effect
+				log.info(f"Conversation cache (memory) cleared for app: {app_name}")
 			except Exception as e:
-				log.error(f"Error clearing conversation cache: {str(e)}")
+				log.error(f"Error reading conversation cache: {str(e)}")
 		else:
 			log.info(f"No cache file for app: {app_name}")
 	

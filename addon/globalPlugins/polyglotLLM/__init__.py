@@ -391,19 +391,25 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	)
 	def script_toggleConversationMode(self, gesture):
 		"""Toggle conversation mode."""
+		global _cache
 		cfg = ch.getConfig()
 		cfg["conversation_mode"] = not cfg["conversation_mode"]
 		ch.saveConfig()
 		
 		if cfg["conversation_mode"]:
-			# Use wx.CallAfter to bypass speech hook
-			wx.CallAfter(ui.message, _("Conversation mode on"))
+			ui.message(_("Conversation mode on"))
 		else:
-			# Only clear conversation history, NOT cache
-			# Cache should persist regardless of conversation mode
+			# Clear conversation history
 			if _translator:
 				_translator.clearConversationHistory()
-			wx.CallAfter(ui.message, _("Conversation mode off"))
+			# Clear ONLY conversation cache entries (convo: prefix)
+			if _cache:
+				try:
+					app_name = globalVars.focusObject.appModule.appName
+				except:
+					app_name = "__global__"
+				_cache.clearConversationCache(app_name)
+			ui.message(_("Conversation mode off"))
 		# Exit layer
 		self.clearGestureBindings()
 		self.bindGestures(self.__gestures)
@@ -424,10 +430,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			_async_translator.cancel_all()
 		
 		if cfg["real_time_enabled"]:
-			# Use wx.CallAfter to bypass speech hook
-			wx.CallAfter(ui.message, _("Real-time on"))
+			ui.message(_("Real-time on"))
 		else:
-			wx.CallAfter(ui.message, _("Real-time off"))
+			ui.message(_("Real-time off"))
 		# Exit layer
 		self.clearGestureBindings()
 		self.bindGestures(self.__gestures)

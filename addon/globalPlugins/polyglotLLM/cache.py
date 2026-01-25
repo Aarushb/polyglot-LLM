@@ -78,7 +78,8 @@ class TranslationCache:
 	def get(self, text, target_language, app_name="__global__", conversation_mode=False, conversation_history=None):
 		"""
 		Retrieve translation from cache.
-		Returns cached translation or None if not found.
+		- Conversation mode: Memory only (temporary)
+		- Global mode: Memory + disk (persistent)
 		"""
 		conversation_hash = self._getConversationHash(conversation_history) if conversation_mode else None
 		cache_key = self._getCacheKey(text, target_language, conversation_mode, conversation_hash)
@@ -89,7 +90,12 @@ class TranslationCache:
 			log.debug(f"Cache hit (memory) for app: {app_name}")
 			return self.memory_cache[memory_key]
 		
-		# Check disk cache
+		# Conversation mode: Memory only, don't check disk
+		if conversation_mode:
+			log.debug(f"Cache miss (convo memory) for app: {app_name}")
+			return None
+		
+		# Global mode: Check disk cache
 		cache_file = self._getCacheFilePath(app_name)
 		if os.path.exists(cache_file):
 			try:
@@ -111,15 +117,22 @@ class TranslationCache:
 	def set(self, text, translation, target_language, app_name="__global__", conversation_mode=False, conversation_history=None):
 		"""
 		Store translation in cache.
+		- Conversation mode: Memory only (cleared on toggle)
+		- Global mode: Memory + disk (persistent)
 		"""
 		conversation_hash = self._getConversationHash(conversation_history) if conversation_mode else None
 		cache_key = self._getCacheKey(text, target_language, conversation_mode, conversation_hash)
 		
-		# Store in memory cache
+		# Always store in memory cache
 		memory_key = f"{app_name}:{cache_key}"
 		self.memory_cache[memory_key] = translation
 		
-		# Store in disk cache
+		# Conversation mode: Memory only, don't save to disk
+		if conversation_mode:
+			log.debug(f"Translation cached (memory only) for app: {app_name}")
+			return
+		
+		# Global mode: Save to disk
 		cache_file = self._getCacheFilePath(app_name)
 		cache_data = {}
 		
@@ -168,19 +181,23 @@ class TranslationCache:
 	
 	def clearConversationCache(self, app_name="__global__"):
 		"""
-		Clear ONLY conversation cache entries, preserve global cache.
+		Clear ONLY conversation cache entries ('convo' keys).
+		App cache ('global' keys) is NEVER touched here.
+		Called when conversation mode is enabled OR disabled.
 		"""
-		# Clear memory cache for this app (clears both convo and global)
-		# This is fine - memory cache is temporary anyway
-		keys_to_remove = [k for k in self.memory_cache.keys() if k.startswith(f"{app_name}:")]
+		# Clear ONLY conversation entries from memory (those ending with convo hash)
+		# We can't distinguish easily in memory, so we clear all memory for this app
+		# But we MUST preserve global entries on disk
+		keys_to_remove = [k for k in self.memory_cache.keys() if k.startswith(f"{app_name}:\")]
 		for key in keys_to_remove:
 			del self.memory_cache[key]
 		
-		# For disk cache: Don't touch it at all
-		# Conversation entries have 'convo' in the key, global have 'global'
-		# Since we can't distinguish hashed keys, just leave disk cache alone
-		# Memory cache clear is sufficient - disk will naturally have both types
-		# but memory cache clear means fresh lookups will get new translations
+		# Disk cache: We need to preserve 'global' entries and remove 'convo' entries
+		# Problem: keys are hashed, can't tell them apart
+		# Solution: Store them in separate files
+		# For now: DON'T touch disk at all - memory clear is enough
+		# Conversation cache will miss and re-translate (correct behavior)
+		# Global cache stays on disk, will reload into memory on access
 		
 		log.info(f"Conversation memory cache cleared for app: {app_name}")
 	

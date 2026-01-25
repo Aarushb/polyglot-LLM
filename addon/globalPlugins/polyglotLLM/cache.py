@@ -36,21 +36,15 @@ class TranslationCache:
 		"""
 		Generate cache key for a translation.
 		
-		Smart caching logic:
-		- Without conversation mode: Cache by text + language only (reuses across contexts)
-		- With conversation mode: Cache by text + language + conversation context
-		
-		This allows:
-		1. Non-conversation translations to be reused widely
-		2. Conversation translations to be context-specific
-		3. Same text in different conversations gets different translations if context differs
+		Caching logic:
+		- Cache by text + language only
+		- Conversation mode provides context to AI but doesn't affect cache
+		- Same text = same cache entry, regardless of conversation state
+		- This allows cache to work properly in conversation mode
 		"""
-		if conversation_mode and conversation_hash:
-			# Context-specific cache for conversations
-			key_string = f"{text}|{target_language}|convo:{conversation_hash}"
-		else:
-			# Global cache for non-conversation translations
-			key_string = f"{text}|{target_language}|global"
+		# Always use global cache key (text + language only)
+		# Conversation mode affects AI translation but not caching
+		key_string = f"{text}|{target_language}|global"
 		
 		# Use hash to keep keys manageable
 		return hashlib.md5(key_string.encode('utf-8')).hexdigest()
@@ -172,39 +166,17 @@ class TranslationCache:
 	
 	def clearConversationCache(self, app_name="__global__"):
 		"""
-		Clear ONLY conversation-specific cache entries (those with 'convo:' in key).
-		Preserves app cache (global translations without conversation context).
+		Clear cache when conversation mode is disabled.
+		Since cache is now text-based (not context-specific),
+		we just clear memory cache to free up space.
+		Disk cache can stay - it's still valid for future use.
 		"""
-		# Clear conversation entries from memory
-		# We need to identify which keys are conversation-specific
-		# Since we hash the keys, we can't directly tell from the hash
-		# But we can rebuild keys and check
-		# Simpler: Just clear memory cache for this app (it's temporary anyway)
+		# Clear memory cache for this app
 		keys_to_remove = [k for k in self.memory_cache.keys() if k.startswith(f"{app_name}:")]
 		for key in keys_to_remove:
 			del self.memory_cache[key]
 		
-		# For disk cache: ONLY remove entries with "convo:" in the original key
-		# Since we hash keys, we need to filter the actual data
-		# The cache file contains BOTH conversation and app cache entries
-		# We need to preserve the app cache entries (global)
-		cache_file = self._getCacheFilePath(app_name)
-		if os.path.exists(cache_file):
-			try:
-				with open(cache_file, 'r', encoding='utf-8') as f:
-					cache_data = json.load(f)
-				
-				# We can't distinguish hashed keys, so we'll need to track metadata
-				# For now: Since conversation entries are based on conversation_history hash,
-				# and we clear conversation_history when toggling off,
-				# those entries become unreachable anyway
-				# So we can just leave the disk cache as-is
-				# The memory cache clear is enough for immediate effect
-				log.info(f"Conversation cache (memory) cleared for app: {app_name}")
-			except Exception as e:
-				log.error(f"Error reading conversation cache: {str(e)}")
-		else:
-			log.info(f"No cache file for app: {app_name}")
+		log.info(f"Memory cache cleared for app: {app_name}")
 	
 	def clearAll(self):
 		"""Clear all caches."""

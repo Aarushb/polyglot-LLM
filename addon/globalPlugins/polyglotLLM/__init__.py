@@ -44,6 +44,7 @@ _translator = None
 _async_translator = None
 _cache = None
 _lastTranslatedText = None
+_skipNextSpeech = False  # Flag to skip translation for internal messages
 
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
@@ -123,7 +124,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		Override NVDA's speak function for real-time translation.
 		Uses synchronous translation but with smart request management.
 		"""
-		global _translator, _async_translator, _cache, _lastTranslatedText
+		global _translator, _async_translator, _cache, _lastTranslatedText, _skipNextSpeech
+		
+		# Skip translation if flag is set (for internal addon messages)
+		if _skipNextSpeech:
+			_skipNextSpeech = False
+			return _nvdaSpeak(speechSequence=speechSequence, priority=priority)
 		
 		cfg = ch.getConfig()
 		real_time_enabled = cfg["real_time_enabled"]
@@ -194,6 +200,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			# Translation failed, use original text
 			return _nvdaSpeak(speechSequence=speechSequence, priority=priority)
 	
+	def _internalMessage(self, message):
+		"""Speak a message without translating it (for internal addon messages)."""
+		global _skipNextSpeech
+		_skipNextSpeech = True
+		ui.message(message)
+	
 	def _getSelectedText(self):
 		"""Get currently selected text."""
 		obj = api.getCaretObject()
@@ -211,12 +223,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		
 		if not _translator:
 			if not skip_speech:
-				ui.message(_("Translation not configured. Please set API key in settings."))
+				self._internalMessage(_("Translation not configured. Please set API key in settings."))
 			return
 		
 		if not text or not text.strip():
 			if not skip_speech:
-				ui.message(_("No text to translate"))
+				self._internalMessage(_("No text to translate"))
 			return
 		
 		cfg = ch.getConfig()
@@ -307,7 +319,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		"""Translate selected text."""
 		text = self._getSelectedText()
 		if not text:
-			ui.message(_("No selection"))
+			self._internalMessage(_("No selection"))
 			# Stay in layer
 			return
 		self._translateAsync(text)
@@ -327,7 +339,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			text = None
 		
 		if not text or not isinstance(text, str) or text.isspace():
-			ui.message(_("Clipboard is empty"))
+			self._internalMessage(_("Clipboard is empty"))
 			# Stay in layer
 			return
 		
@@ -345,7 +357,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if self.lastSpokenText:
 			self._translateAsync(self.lastSpokenText)
 		else:
-			ui.message(_("No last spoken text"))
+			self._internalMessage(_("No last spoken text"))
 			# Stay in layer
 			return
 		# Exit layer after translation
@@ -360,9 +372,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		"""Copy last translation to clipboard."""
 		if self.lastTranslation:
 			api.copyToClip(self.lastTranslation)
-			ui.message(_("Translation copied"))
+			self._internalMessage(_("Translation copied"))
 		else:
-			ui.message(_("No translation to copy"))
+			self._internalMessage(_("No translation to copy"))
 		# Exit layer
 		self.clearGestureBindings()
 		self.bindGestures(self.__gestures)
@@ -380,7 +392,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		message = _("Target: {lang}, Conversation: {convo}, Real-time: {rt}").format(
 			lang=target_lang, convo=convo_status, rt=realtime_status
 		)
-		ui.message(message)
+		self._internalMessage(message)
 		# Exit layer
 		self.clearGestureBindings()
 		self.bindGestures(self.__gestures)
@@ -397,7 +409,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		ch.saveConfig()
 		
 		if cfg["conversation_mode"]:
-			ui.message(_("Conversation mode on"))
+			self._internalMessage(_("Conversation mode on"))
 		else:
 			# Clear conversation history
 			if _translator:
@@ -409,7 +421,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				except:
 					app_name = "__global__"
 				_cache.clearConversationCache(app_name)
-			ui.message(_("Conversation mode off"))
+			self._internalMessage(_("Conversation mode off"))
 		# Exit layer
 		self.clearGestureBindings()
 		self.bindGestures(self.__gestures)
@@ -430,9 +442,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			_async_translator.cancel_all()
 		
 		if cfg["real_time_enabled"]:
-			ui.message(_("Real-time on"))
+			self._internalMessage(_("Real-time on"))
 		else:
-			ui.message(_("Real-time off"))
+			self._internalMessage(_("Real-time off"))
 		# Exit layer
 		self.clearGestureBindings()
 		self.bindGestures(self.__gestures)
@@ -451,9 +463,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		
 		if _cache:
 			_cache.clearApp(app_name)
-			ui.message(_("Cache cleared"))
+			self._internalMessage(_("Cache cleared"))
 		else:
-			ui.message(_("Cache not initialized"))
+			self._internalMessage(_("Cache not initialized"))
 		# Exit layer
 		self.clearGestureBindings()
 		self.bindGestures(self.__gestures)
@@ -475,7 +487,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			"S: Settings, "
 			"Escape: Exit layer"
 		)
-		ui.message(help_text)
+		self._internalMessage(help_text)
 		# Exit layer
 		self.clearGestureBindings()
 		self.bindGestures(self.__gestures)

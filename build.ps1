@@ -3,16 +3,26 @@
 Write-Host "=== Polyglot-LLM Build Script ===" -ForegroundColor Cyan
 Write-Host ""
 
+# Check if we're in a virtual environment
+$inVenv = $env:VIRTUAL_ENV -ne $null
+if ($inVenv) {
+    Write-Host "✓ Virtual environment detected: $env:VIRTUAL_ENV" -ForegroundColor Green
+} else {
+    Write-Host "⚠ Not in virtual environment - using system Python" -ForegroundColor Yellow
+}
+
 # Check if SCons is installed
-Write-Host "Checking for SCons..." -ForegroundColor Yellow
+Write-Host ""
+Write-Host "Checking for build dependencies..." -ForegroundColor Yellow
+
 try {
-    $sconsVersion = scons --version 2>&1 | Select-String "SCons" | Out-String
-    if ($sconsVersion) {
-        Write-Host "✓ SCons found" -ForegroundColor Green
-        Write-Host $sconsVersion.Trim()
+    $pythonCmd = if ($inVenv) { "python" } else { "python" }
+    & $pythonCmd -c "import SCons; import markdown" 2>&1 | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "✓ Build dependencies found" -ForegroundColor Green
     }
 } catch {
-    Write-Host "✗ SCons not found" -ForegroundColor Red
+    Write-Host "✗ Build dependencies not found" -ForegroundColor Red
     Write-Host "Installing build dependencies..." -ForegroundColor Yellow
     pip install -r requirements-build.txt
     if ($LASTEXITCODE -ne 0) {
@@ -24,7 +34,9 @@ try {
 
 Write-Host ""
 Write-Host "Building addon..." -ForegroundColor Yellow
-scons
+
+# Use python -m SCons for better compatibility
+& $pythonCmd -m SCons
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "✓ Build successful!" -ForegroundColor Green

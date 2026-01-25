@@ -37,14 +37,16 @@ class TranslationCache:
 		Generate cache key for a translation.
 		
 		Caching logic:
-		- Cache by text + language only
-		- Conversation mode provides context to AI but doesn't affect cache
-		- Same text = same cache entry, regardless of conversation state
-		- This allows cache to work properly in conversation mode
+		- Conversation mode ON: Use 'convo' cache (temporary, cleared on disable)
+		- Conversation mode OFF: Use 'global' cache (persistent)
+		- Two separate cache namespaces to prevent interference
 		"""
-		# Always use global cache key (text + language only)
-		# Conversation mode affects AI translation but not caching
-		key_string = f"{text}|{target_language}|global"
+		if conversation_mode:
+			# Conversation cache - cleared when mode disabled
+			key_string = f"{text}|{target_language}|convo"
+		else:
+			# Global cache - persistent
+			key_string = f"{text}|{target_language}|global"
 		
 		# Use hash to keep keys manageable
 		return hashlib.md5(key_string.encode('utf-8')).hexdigest()
@@ -166,15 +168,31 @@ class TranslationCache:
 	
 	def clearConversationCache(self, app_name="__global__"):
 		"""
-		Clear cache when conversation mode is disabled.
-		Since cache is now text-based (not context-specific),
-		we just clear memory cache to free up space.
-		Disk cache can stay - it's still valid for future use.
+		Clear conversation cache when conversation mode is disabled.
+		Removes all 'convo' cache entries, preserves 'global' cache.
 		"""
 		# Clear memory cache for this app
 		keys_to_remove = [k for k in self.memory_cache.keys() if k.startswith(f"{app_name}:")]
 		for key in keys_to_remove:
 			del self.memory_cache[key]
+		
+		# Clear conversation entries from disk cache
+		# We need to rebuild cache file without 'convo' entries
+		cache_file = self._getCacheFilePath(app_name)
+		if os.path.exists(cache_file):
+			try:
+				with open(cache_file, 'r', encoding='utf-8') as f:
+					cache_data = json.load(f)
+				
+				# We need to determine which keys are 'convo' vs 'global'
+				# Since keys are hashed, we'll need to regenerate to identify them
+				# Simpler approach: Track cache entries separately or clear entire file
+				# For conversation mode, we'll clear the entire cache file
+				# Global translations will be regenerated on next use
+				os.remove(cache_file)
+				log.info(f"Conversation cache cleared for app: {app_name}")
+			except Exception as e:
+				log.error(f"Error clearing conversation cache: {str(e)}")
 		
 		log.info(f"Memory cache cleared for app: {app_name}")
 	

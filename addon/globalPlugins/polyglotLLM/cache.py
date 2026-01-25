@@ -41,12 +41,15 @@ class TranslationCache:
 		- Conversation mode OFF: Use 'global' cache (persistent)
 		- Two separate cache namespaces to prevent interference
 		"""
+		# Normalize text to ensure same text matches regardless of whitespace
+		normalized_text = " ".join(text.split())
+		
 		if conversation_mode:
 			# Conversation cache - cleared when mode disabled
-			key_string = f"{text}|{target_language}|convo"
+			key_string = f"{normalized_text}|{target_language}|convo"
 		else:
 			# Global cache - persistent
-			key_string = f"{text}|{target_language}|global"
+			key_string = f"{normalized_text}|{target_language}|global"
 		
 		# Use hash to keep keys manageable
 		return hashlib.md5(key_string.encode('utf-8')).hexdigest()

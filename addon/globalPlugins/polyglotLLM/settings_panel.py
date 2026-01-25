@@ -155,3 +155,12 @@ class PolyglotLLMSettingsPanel(SettingsPanel):
 		
 		# Save to disk
 		ch.saveConfig()
+	
+	def postSave(self):
+		"""Called after settings are saved. Reinitialize translator with new settings."""
+		# Get the global plugin instance and reinitialize translator
+		import globalPluginHandler
+		for plugin in globalPluginHandler.runningPlugins:
+			if plugin.__class__.__name__ == "GlobalPlugin" and hasattr(plugin, '_initializeTranslator'):
+				plugin._initializeTranslator()
+				break

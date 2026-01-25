@@ -354,7 +354,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			ui.message(_("Translation copied"))
 		else:
 			ui.message(_("No translation to copy"))
-		# Stay in layer for more commands
+		# Exit layer
+		self.clearGestureBindings()
+		self.bindGestures(self.__gestures)
 	
 	@scriptHandler.script(
 		description=_("Announce current translation settings"),
@@ -370,7 +372,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			lang=target_lang, convo=convo_status, rt=realtime_status
 		)
 		ui.message(message)
-		# Stay in layer
+		# Exit layer
+		self.clearGestureBindings()
+		self.bindGestures(self.__gestures)
 	
 	@scriptHandler.script(
 		description=_("Toggle conversation mode"),
@@ -389,7 +393,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if _translator:
 				_translator.clearConversationHistory()
 			ui.message(_("Conversation mode off"))
-		# Stay in layer for more commands
+		# Exit layer
+		self.clearGestureBindings()
+		self.bindGestures(self.__gestures)
 	
 	@scriptHandler.script(
 		description=_("Toggle real-time translation mode"),
@@ -405,7 +411,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			ui.message(_("Real-time on"))
 		else:
 			ui.message(_("Real-time off"))
-		# Stay in layer for more commands
+		# Exit layer
+		self.clearGestureBindings()
+		self.bindGestures(self.__gestures)
 	
 	@scriptHandler.script(
 		description=_("Clear translation cache for current application"),
@@ -424,7 +432,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			ui.message(_("Cache cleared"))
 		else:
 			ui.message(_("Cache not initialized"))
-		# Stay in layer
+		# Exit layer
+		self.clearGestureBindings()
+		self.bindGestures(self.__gestures)
 	
 	@scriptHandler.script(
 		description=_("Show translation layer help"),
@@ -444,7 +454,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			"Escape: Exit layer"
 		)
 		ui.message(help_text)
-		# Stay in layer
+		# Exit layer
+		self.clearGestureBindings()
+		self.bindGestures(self.__gestures)
 	
 	@scriptHandler.script(
 		description=_("Exit translation layer"),
